@@ -49,15 +49,6 @@ class Suit(Enum):
     Diamonds = 'Diamonds'
     Hearts = 'Hearts'
 
-    def get_complement(self):
-        complement_map = {
-            'Spades': 'Clubs',
-            'Clubs': 'Spades',
-            'Hearts': 'Diamonds',
-            'Diamonds': 'Hearts'
-        }
-        return Suit[complement_map[self.value]]
-
     def to_symbol(self) -> str:
         symbols = {
             'Spades':   '♠',
@@ -159,45 +150,6 @@ class Action(Enum):
     Discard4 = 4
     Discard5 = 5
 
-
-    @classmethod
-    def get_card_action(cls, card: Card):
-        action_map = {
-            'Spades': {
-                'Ace': cls.PlayAS,
-                'King': cls.PlayKS,
-                'Queen': cls.PlayQS,
-                'Jack': cls.PlayJS,
-                'Ten': cls.PlayTS,
-                'Nine': cls.PlayNS
-            },
-            'Diamonds': {
-                'Ace': cls.PlayAD,
-                'King': cls.PlayKD,
-                'Queen': cls.PlayQD,
-                'Jack': cls.PlayJD,
-                'Ten': cls.PlayTD,
-                'Nine': cls.PlayND
-            },
-            'Hearts': {
-                'Ace': cls.PlayAH,
-                'King': cls.PlayKH,
-                'Queen': cls.PlayQH,
-                'Jack': cls.PlayJH,
-                'Ten': cls.PlayTH,
-                'Nine': cls.PlayNH
-            },
-            'Clubs': {
-                'Ace': cls.PlayAC,
-                'King': cls.PlayKC,
-                'Queen': cls.PlayQC,
-                'Jack': cls.PlayJC,
-                'Ten': cls.PlayTC,
-                'Nine': cls.PlayNC
-            }
-        }
-        return action_map[card.suit.name][card.value.name]
-
     @staticmethod
     def get_bid_action(card: Card):
         return Action(f"CALL_{card.suit.name}")
@@ -217,7 +169,7 @@ def get_card_rankings(trump_suit: Suit, lead_suit: Suit):
         raise InvalidStateException('Cannot get card rankings when no card has been lead')
 
     right_bower = Card(Value.Jack, trump_suit)
-    left_bower = Card(Value.Jack, trump_suit.get_complement())
+    left_bower = Card(Value.Jack, SUIT_COMPLEMENT[trump_suit])
 
     # Build the rankings in reverse order so the index serves as the value
     ranking = []
@@ -227,8 +179,9 @@ def get_card_rankings(trump_suit: Suit, lead_suit: Suit):
         if suit != trump_suit and suit !=  lead_suit:
             ranking += [Card(val, suit) for val in reversed(Value)]
     
-    # Add lead suit
-    ranking += [Card(val, lead_suit) for val in reversed(Value)]
+    if lead_suit != trump_suit:
+        # Add lead suit
+        ranking += [Card(val, lead_suit) for val in reversed(Value)]
 
     ranking += [Card(val, trump_suit) for val in reversed(Value)]
 
@@ -240,12 +193,56 @@ def get_card_rankings(trump_suit: Suit, lead_suit: Suit):
 
     return ranking
 
+ACTION_MAP = {
+        Suit.Spades: {
+            Value.Ace: Action.PlayAS,
+            Value.King: Action.PlayKS,
+            Value.Queen: Action.PlayQS,
+            Value.Jack: Action.PlayJS,
+            Value.Ten: Action.PlayTS,
+            Value.Nine: Action.PlayNS
+        },
+        Suit.Diamonds: {
+            Value.Ace: Action.PlayAD,
+            Value.King: Action.PlayKD,
+            Value.Queen: Action.PlayQD,
+            Value.Jack: Action.PlayJD,
+            Value.Ten: Action.PlayTD,
+            Value.Nine: Action.PlayND
+        },
+        Suit.Hearts: {
+            Value.Ace: Action.PlayAH,
+            Value.King: Action.PlayKH,
+            Value.Queen: Action.PlayQH,
+            Value.Jack: Action.PlayJH,
+            Value.Ten: Action.PlayTH,
+            Value.Nine: Action.PlayNH
+        },
+        Suit.Clubs: {
+            Value.Ace: Action.PlayAC,
+            Value.King: Action.PlayKC,
+            Value.Queen: Action.PlayQC,
+            Value.Jack: Action.PlayJC,
+            Value.Ten: Action.PlayTC,
+            Value.Nine: Action.PlayNC
+        }
+    }
+
+SUIT_COMPLEMENT = {
+    Suit.Spades: Suit.Clubs,
+    Suit.Clubs: Suit.Spades,
+    Suit.Diamonds: Suit.Hearts,
+    Suit.Hearts: Suit.Diamonds
+}
+
 class GameState:
     """
     Team Even: Players 0 and 2
     Team Odd: Players 1 and 3
     """
-    def __init__(self):
+    def __init__(self, debug=False):
+
+        self.debug = debug
         # Deck
         self.played_cards: List[Card] = []
         self.player_hands: List[List[Card]]
@@ -289,6 +286,7 @@ class GameState:
     def pretty_print_state(self):
         print(f'Team Even score: {self.team_points[0]}')
         print(f'Team Odd score: {self.team_points[1]}')
+        print(f'Calling team {self.calling_team}')
         print(f'Even tricks {self.team_tricks[0]}, Odd tricks {self.team_tricks[1]}')
         print(f'Dealer: Player {self.dealer}')
         print(f'Current Player {self.current_agent}')
@@ -306,8 +304,7 @@ class GameState:
         print('Your hand')
         hand = self.player_hands[self.current_agent]
         print_cards(hand)
-
-        
+       
     def valid_actions(self) -> List[Action]:
         hand = self.player_hands[self.current_agent]
         if max(self.team_points) >= 10:
@@ -328,28 +325,31 @@ class GameState:
         else: # Playing the hand
             if self.lead_suit is None:
                 # All cards are legal
-                return [Action.get_card_action(card) for card in hand]
+                return [ACTION_MAP[card.suit][card.value] for card in hand]
 
             # Must follow suit if possible
-            left_bower = Card(Value.Jack, self.trump_suit.get_complement())
-            follow_actions = [Action.get_card_action(card) for card in hand if card.suit == self.lead_suit]
+            left_bower = Card(Value.Jack, SUIT_COMPLEMENT[self.trump_suit])
+            follow_actions = [ACTION_MAP[card.suit][card.value] for card in hand if card.suit == self.lead_suit]
             
             # Left plays as trump
             if self.lead_suit == self.trump_suit and left_bower in hand:
-                follow_actions.append(Action.get_card_action(left_bower))
+                follow_actions.append(ACTION_MAP[left_bower.suit][left_bower.value])
             
             # Left cannot play as itself
-            if self.lead_suit == self.trump_suit.get_complement() and left_bower in hand:
-                follow_actions.remove(Action.get_card_action(left_bower))
+            if self.lead_suit == SUIT_COMPLEMENT[self.trump_suit] and left_bower in hand:
+                follow_actions.remove(ACTION_MAP[left_bower.suit][left_bower.value])
 
             if follow_actions:
                 return follow_actions
             else:
-                return [Action.get_card_action(card) for card in hand]
+                return [ACTION_MAP[card.suit][card.value] for card in hand]
 
     def take_action(self, action: Action, copy=True):
         if action not in self.valid_actions():
             raise InvalidActionExection(f'{action} is not valid in the current game state')
+
+        if self.debug:
+            print(f'Player {self.current_agent} takes {action}')
 
         if copy:
             new_state = deepcopy(self)
@@ -367,8 +367,8 @@ class GameState:
             if self.hand_turn < 4:
                 # Dealer picks up card
                 kitty_card = self.kitty[-1]
-                self.player_hands[self.dealer] += [self.kitty[-1]]
-                self.kitty.remove(kitty_card)
+                new_state.player_hands[self.dealer] += [self.kitty[-1]]
+                new_state.kitty.remove(kitty_card)
                 new_state.current_agent = self.dealer
             else:
                 # left of dealer starts
@@ -378,6 +378,7 @@ class GameState:
             discarded_card = self.player_hands[self.current_agent][idx]
             new_state.player_hands[self.current_agent].remove(discarded_card)
             new_state.played_cards.append(discarded_card)
+            new_state.current_agent = (self.dealer + 1) % 4
         elif action.name.startswith('Play'):
             _, value, suit = action.value.split('_')
 
@@ -386,7 +387,7 @@ class GameState:
             new_state.table.append(played_card)
 
             if self.lead_suit is None:
-                if played_card == Card(Value.Jack, self.trump_suit.get_complement()):
+                if played_card == Card(Value.Jack, SUIT_COMPLEMENT[self.trump_suit]):
                     new_state.lead_suit = self.trump_suit
                 else:
                     new_state.lead_suit = played_card.suit
@@ -400,10 +401,12 @@ class GameState:
                 rankings = get_card_rankings(new_state.trump_suit, new_state.lead_suit)
                 trick: List[Card] = new_state.table.copy()
                 winning_card: Card = max(trick, key=lambda card: rankings.index(card))
-                winning_player = ((trick.index(winning_card) - self.lead) % 4)
+                winning_player = ((trick.index(winning_card) + self.lead) % 4)
+
+                if self.debug:
+                    print(f'Player {winning_player} takes the trick!')
 
                 new_state.team_tricks[winning_player % 2] += 1
-                
                 new_state.lead = winning_player
                 new_state.current_agent = winning_player
 
@@ -431,6 +434,7 @@ class GameState:
                 new_state.hand_turn = 0
                 new_state.team_tricks = [0, 0]
                 new_state.dealer = (new_state.dealer + 1) % 4
+                new_state.lead = (new_state.dealer + 1) % 4
                 new_state.current_agent = (new_state.dealer + 1) % 4
 
         return new_state
@@ -443,7 +447,6 @@ class GameState:
         # randomize the cards. Everything they know will remain
         # true
         pov_player = 0
-
         new_state = deepcopy(self)
 
         deck = []
@@ -451,7 +454,7 @@ class GameState:
         for i, hand in enumerate(new_state.player_hands):
             if i != pov_player:
                 deck += hand
-        deck += new_state.kitty[:-1]
+        deck += new_state.kitty[:3]
 
         # Need to fill the most restricted hands first
         hand_idxs = [(i, suits) for i, suits in enumerate(new_state.player_suits) if i != pov_player]
@@ -463,10 +466,9 @@ class GameState:
             for card in deck:
                 if card.suit in new_state.player_suits[hand_idx]:
                     new_hand.append(card)
-                if len(new_hand) == 5:
+                if len(new_hand) == len(self.player_hands[hand_idx]):
                     break
             new_state.player_hands[hand_idx] = new_hand
-            assert(len(new_state.player_hands[hand_idx]) == 5)
             
             for card in new_hand:
                 deck.remove(card)
@@ -477,6 +479,8 @@ class GameState:
         return new_state
 
 def simulate_uniform(state: GameState):
+    starting_team = state.current_agent % 2
+    opponent = (starting_team + 1) % 2
     starting_points = state.team_points.copy()
     while True:
         if starting_points != state.team_points:
@@ -485,40 +489,37 @@ def simulate_uniform(state: GameState):
             action = random.choice(state.valid_actions())
             state = state.take_action(action, copy=False)
     
-    positive_points = state.team_points[0] - starting_points[0]
-    negative_points = state.team_points[1] - starting_points[1]
+    positive_points = state.team_points[starting_team] - starting_points[starting_team]
+    negative_points = state.team_points[opponent] - starting_points[opponent]
 
     return positive_points - negative_points
 
 
-def score_actions(state: GameState, num_samples=10000):
+def score_actions(state: GameState, num_samples=1000):
     actions = state.valid_actions()
+    if len(actions) == 1:
+        return actions, [None]
     action_rewards = [0] * len(actions)
     for i, action in enumerate(actions):
         for sample in range(num_samples // len(actions)):
             perturb_state = state.get_random_unseen()
+            perturb_state.debug = False
             reward = simulate_uniform(perturb_state)
             action_rewards[i] += reward
 
-    return [(action, reward / (num_samples // len(actions))) for action, reward in zip(actions, action_rewards)]
+    return actions, [reward / (num_samples // len(actions)) for reward in action_rewards]
 
 
 if __name__ == "__main__":
-    gs = GameState()
+    gs = GameState(debug=True)
     while True:
         print('-------------')
         gs.pretty_print_state()
 
-        print(score_actions(gs))
-        break
-
-        print('Possible Actions')
-        actions = gs.valid_actions()
-        if not actions:
-            break
+        actions, rewards = score_actions(gs)
 
         for i, action in enumerate(actions):
-            print(f'{i+1}: {action.name}')
+            print(f'{i+1}: {action}, Score: {rewards[i]}')
         
         try:
             id = int(input('Select action id:'))
