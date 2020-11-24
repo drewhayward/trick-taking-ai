@@ -3,6 +3,7 @@ package cfr
 import (
 	"fmt"
 	"math/rand"
+	"sort"
 	"time"
 )
 
@@ -56,11 +57,11 @@ func (c *Card) effectiveSuit(trumpSuit Suit) Suit {
 }
 
 func (c *Card) getSuit() Suit {
-	return Suit((uint8(*c) / 10) * 10)
+	return Suit((int(*c) / 10) * 10)
 }
 
 func (c *Card) getValue() Value {
-	return Value(uint8(*c) % 10)
+	return Value(int(*c) % 10)
 }
 
 func getRankings(trumpSuit Suit, leadSuit Suit) []Card {
@@ -72,7 +73,10 @@ func getRankings(trumpSuit Suit, leadSuit Suit) []Card {
 	for s := 10; s <= 40; s += 10 {
 		if (Suit(s) != trumpSuit) && (Suit(s) != leadSuit) {
 			for v := 6; v > 0; v-- {
-				ranks = append(ranks, makeCard(Suit(s), Value(v)))
+				card := makeCard(Suit(s), Value(v))
+				if card != leftBower {
+					ranks = append(ranks, card)
+				}
 			}
 		}
 	}
@@ -80,18 +84,22 @@ func getRankings(trumpSuit Suit, leadSuit Suit) []Card {
 	// Add lead suit
 	if leadSuit != trumpSuit {
 		for v := 6; v > 0; v-- {
-			ranks = append(ranks, makeCard(leadSuit, Value(v)))
+			card := makeCard(leadSuit, Value(v))
+			if card != leftBower {
+				ranks = append(ranks, card)
+			}
 		}
 	}
 
 	// Add trump
 	for v := 6; v > 0; v-- {
-		ranks = append(ranks, makeCard(trumpSuit, Value(v)))
+		card := makeCard(trumpSuit, Value(v))
+		if card != rightBower {
+			ranks = append(ranks, card)
+		}
 	}
 
-	// Move bowers to top
-	ranks = RemoveValue(ranks, leftBower)
-	ranks = RemoveValue(ranks, rightBower)
+	// Bowers on top
 	ranks = append(ranks, leftBower)
 	ranks = append(ranks, rightBower)
 
@@ -158,7 +166,7 @@ const (
 
 // EuchreState stores the current game state of a euchre hand
 type EuchreState struct {
-	playerHands [][]Card
+	playerHands [4][]Card
 	playedCards []Card
 	table       []Card
 	//kitty       []Card
@@ -181,34 +189,37 @@ func NewEuchreState() EuchreState {
 	}
 	rand.Shuffle(len(deck), func(i, j int) { deck[i], deck[j] = deck[j], deck[i] })
 
-	lead_player := rand.Intn(4)
+	leadPlayer := rand.Intn(4)
 	state := EuchreState{
-		lead:         lead_player,
+		lead:         leadPlayer,
 		callingTeam:  rand.Intn(2),
-		currentAgent: lead_player,
+		currentAgent: leadPlayer,
 		teamTricks:   [2]int{0, 0},
-		playerHands:  make([][]Card, 4),
-		playedCards:  make([]Card, 0, 20),
+		playedCards:  make([]Card, 0),
 		trumpSuit:    SPADES,
 		table:        make([]Card, 0, 4),
 	}
 
+	// Deal cards
 	for i := 0; i < 4; i++ {
 		state.playerHands[i] = make([]Card, 5)
 		for c := 0; c < 5; c++ {
 			state.playerHands[i][c] = deck[c+i*5]
 		}
+		// Sort hands
+		sort.Slice(state.playerHands[i], func(j, k int) bool {
+			return state.playerHands[i][j] < state.playerHands[i][k]
+		})
 	}
 
 	return state
 }
 
-func (state EuchreState) Clone() EuchreState {
-	newState := state
-	newState.playerHands = make([][]Card, 4)
-	// Deepcopy the playerhands
+func (state *EuchreState) Clone() EuchreState {
+	newState := *state
+
 	for handIdx, hand := range state.playerHands {
-		newState.playerHands[handIdx] = make([]Card, len(hand), 5)
+		newState.playerHands[handIdx] = make([]Card, len(hand))
 
 		for cIdx, card := range hand {
 			newState.playerHands[handIdx][cIdx] = card
@@ -226,21 +237,43 @@ func (state *EuchreState) ValidActions() []Action {
 	if state.leadSuit != 0 {
 		// Follow suit if possible
 		playableActions = make([]Action, 0, len(hand))
+		var lastCard Card = 0
 		for _, card := range hand {
-			if card.effectiveSuit(state.trumpSuit) == state.leadSuit {
+			skipAction := (lastCard != 0) && (card == (lastCard + 1))
+			if !skipAction && (card.effectiveSuit(state.trumpSuit) == state.leadSuit) {
 				playableActions = append(playableActions, Action(card))
 			}
+
+			lastCard = card
 		}
 
 		// If no lead suit, play normally
-		for _, card := range hand {
-			playableActions = append(playableActions, Action(card))
+		if len(playableActions) == 0 {
+			var lastCard Card = 0
+			for _, card := range hand {
+				skipAction := (card == (lastCard + 1))
+				if !skipAction {
+					playableActions = append(playableActions, Action(card))
+				}
+
+				lastCard = card
+			}
 		}
 	} else {
-		playableActions = make([]Action, len(hand))
-		for index, card := range hand {
-			playableActions[index] = Action(card)
+		playableActions = make([]Action, 0, len(hand))
+		var lastCard Card = 0
+		for _, card := range hand {
+			skipAction := (card == (lastCard + 1))
+			if !skipAction {
+				playableActions = append(playableActions, Action(card))
+			}
+
+			lastCard = card
 		}
+	}
+
+	if len(playableActions) > 5 {
+		panic("Too many playable card actions")
 	}
 
 	return playableActions
