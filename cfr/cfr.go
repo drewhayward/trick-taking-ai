@@ -1,43 +1,56 @@
 package cfr
 
+import "math"
+
 type (
 	Action     int
 	InfoSetKey string
 )
 
-type infoSet struct {
-	cumulativeStrategy map[Action]float32
-	cumulativeRegret   map[Action]float32
-	currentStrategy    map[Action]float32
+type InfoSet struct {
+	CumulativeStrategy map[Action]float64
+	CumulativeRegret   map[Action]float64
+	CurrentStrategy    map[Action]float64
 }
 
-func (info *infoSet) updateStrategy() {
-	// TODO: Implement
+func (info *InfoSet) updateStrategy() {
+	normalizingSum := 0.0
+	for action, regret := range info.CumulativeRegret {
+		info.CurrentStrategy[action] = math.Max(regret, 0)
+		normalizingSum += info.CurrentStrategy[action]
+	}
+	for action := range info.CumulativeRegret {
+		if normalizingSum > 0 {
+			info.CurrentStrategy[action] /= normalizingSum
+		} else {
+			info.CurrentStrategy[action] = 1.0 / float64(len(info.CumulativeRegret))
+		}
+	}
 }
 
-func makeInfoSet(ValidActions []Action) *infoSet {
-	info := infoSet{
-		cumulativeStrategy: make(map[Action]float32),
-		cumulativeRegret:   make(map[Action]float32),
-		currentStrategy:    make(map[Action]float32),
+func makeInfoSet(ValidActions []Action) InfoSet {
+	info := InfoSet{
+		CumulativeStrategy: make(map[Action]float64),
+		CumulativeRegret:   make(map[Action]float64),
+		CurrentStrategy:    make(map[Action]float64),
 	}
 
 	for index := range ValidActions {
-		info.cumulativeStrategy[ValidActions[index]] = 0.0
-		info.cumulativeRegret[ValidActions[index]] = 0.0
-		info.currentStrategy[ValidActions[index]] = 1.0 / float32(len(ValidActions))
+		info.CumulativeStrategy[ValidActions[index]] = 0.0
+		info.CumulativeRegret[ValidActions[index]] = 0.0
+		info.CurrentStrategy[ValidActions[index]] = 1.0 / float64(len(ValidActions))
 	}
 
-	return &info
+	return info
 }
 
 type Strategy struct {
-	infoSetMap map[InfoSetKey]*infoSet
+	InfoSetMap map[InfoSetKey]InfoSet
 }
 
 func NewStrategy() Strategy {
 	return Strategy{
-		infoSetMap: make(map[InfoSetKey]*infoSet),
+		InfoSetMap: make(map[InfoSetKey]InfoSet),
 	}
 }
 
@@ -49,12 +62,11 @@ type State interface {
 	TakeActionCopy(Action) State
 	IsTerminal() bool
 	GetCurrentAgent() int
-	GetUtility(playerID int) float32
+	GetUtility(playerID int) float64
 	GetInfoSetKey() InfoSetKey
 }
 
-func (strat *Strategy) CFR(playerID int, pstate State, agentPathProbs []float32) float32 {
-	state := pstate
+func (strat *Strategy) CFR(playerID int, state State, agentPathProbs []float64) float64 {
 	currentAgent := state.GetCurrentAgent()
 
 	if state.IsTerminal() {
@@ -69,18 +81,18 @@ func (strat *Strategy) CFR(playerID int, pstate State, agentPathProbs []float32)
 	}
 
 	InfoSetKey := state.GetInfoSetKey()
-	info, exists := strat.infoSetMap[InfoSetKey]
+	info, exists := strat.InfoSetMap[InfoSetKey]
 	if !exists {
 		info = makeInfoSet(validActions)
-		strat.infoSetMap[InfoSetKey] = info
+		strat.InfoSetMap[InfoSetKey] = info
 	}
 
-	utility := float32(0.0)
-	actionUtility := make(map[Action]float32)
+	utility := float64(0.0)
+	actionUtility := make(map[Action]float64)
 	for _, action := range validActions {
-		actionProb := info.currentStrategy[action]
+		actionProb := info.CurrentStrategy[action]
 
-		newPathProbs := make([]float32, len(agentPathProbs))
+		newPathProbs := make([]float64, len(agentPathProbs))
 		copy(newPathProbs, agentPathProbs)
 		newPathProbs[currentAgent] = newPathProbs[currentAgent] * actionProb
 
@@ -90,7 +102,7 @@ func (strat *Strategy) CFR(playerID int, pstate State, agentPathProbs []float32)
 
 	if currentAgent == playerID {
 		// Find the probability of attempting to reach the current state
-		nonPlayerPathProb := float32(1.0)
+		nonPlayerPathProb := float64(1.0)
 		for index, prob := range agentPathProbs {
 			if index != playerID {
 				nonPlayerPathProb *= prob
@@ -98,8 +110,8 @@ func (strat *Strategy) CFR(playerID int, pstate State, agentPathProbs []float32)
 		}
 
 		for _, action := range validActions {
-			info.cumulativeRegret[action] += nonPlayerPathProb * (actionUtility[action] - utility)
-			info.cumulativeStrategy[action] += agentPathProbs[playerID] * info.currentStrategy[action]
+			info.CumulativeRegret[action] += nonPlayerPathProb * (actionUtility[action] - utility)
+			info.CumulativeStrategy[action] += agentPathProbs[playerID] * info.CurrentStrategy[action]
 		}
 
 		info.updateStrategy()

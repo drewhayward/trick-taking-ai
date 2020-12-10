@@ -179,6 +179,7 @@ type EuchreState struct {
 	currentAgent int
 }
 
+// NewEuchreState ...
 func NewEuchreState() EuchreState {
 	rand.Seed(time.Now().UnixNano())
 	var deck []Card
@@ -329,7 +330,7 @@ func (state EuchreState) GetCurrentAgent() int {
 	return state.currentAgent
 }
 
-func (state *EuchreState) GetUtility(playerID int) float32 {
+func (state *EuchreState) GetUtility(playerID int) float64 {
 	playerTeam := playerID % 2
 	nonCallingTeam := 1 - state.callingTeam
 
@@ -342,7 +343,7 @@ func (state *EuchreState) GetUtility(playerID int) float32 {
 		points[state.callingTeam] = 1
 	}
 
-	return float32(points[playerTeam] - points[1-playerTeam])
+	return float64(points[playerTeam] - points[1-playerTeam])
 }
 
 func (state EuchreState) TakeActionCopy(action Action) State {
@@ -361,7 +362,7 @@ func (state EuchreState) GetInfoSetKey() InfoSetKey {
 
 func (state *EuchreState) IsTerminal() bool {
 	nonCallingTeam := 1 - state.callingTeam
-	return (state.teamTricks[state.callingTeam] == 5) || (state.teamTricks[nonCallingTeam] == 3)
+	return (state.teamTricks[state.callingTeam] == 5) || (state.teamTricks[nonCallingTeam] == 3) || (state.teamTricks[0]+state.teamTricks[1] == 5)
 }
 
 func RemoveValue(s []Card, value Card) []Card {
