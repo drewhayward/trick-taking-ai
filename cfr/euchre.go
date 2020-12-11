@@ -523,6 +523,12 @@ func (state *EuchreState) normalizeTrump(suit Suit) {
 	for i := range state.table {
 		state.table[i].normalizeSuit(suit)
 	}
+
+	// Trump/lead
+	state.trumpSuit = state.trumpSuit.normalizeSuit(suit)
+	if state.leadSuit != 0 {
+		state.leadSuit = state.leadSuit.normalizeSuit(suit)
+	}
 }
 
 func (state *EuchreState) unnormalizeTrump(suit Suit) {
