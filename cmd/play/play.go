@@ -8,6 +8,7 @@ import (
 
 func main() {
 	state := cfr.NewEuchreState()
+	strat := cfr.NewStrategy()
 	game := cfr.Game{
 		GameState: &state,
 		Agents:    make([]cfr.Agent, 4),
@@ -17,7 +18,7 @@ func main() {
 		if i%2 == 0 {
 			game.Agents[i] = cfr.OptimalAgent{}
 		} else {
-			game.Agents[i] = cfr.OptimalAgent{}
+			game.Agents[i] = cfr.CFRAgent{Strat: strat}
 		}
 	}
 

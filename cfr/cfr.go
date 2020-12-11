@@ -1,16 +1,54 @@
 package cfr
 
-import "math"
+import (
+	"math"
+	"math/rand"
+)
 
 type (
 	Action     int
 	InfoSetKey string
 )
 
+// InfoSet ...
 type InfoSet struct {
-	CumulativeStrategy map[Action]float64
-	CumulativeRegret   map[Action]float64
-	CurrentStrategy    map[Action]float64
+	CumulativeStrategySum map[Action]float64
+	CumulativeRegret      map[Action]float64
+	CurrentStrategy       map[Action]float64
+}
+
+func (info InfoSet) getStateStrategy() map[Action]float64 {
+	var norm float64 = 0.0
+	stateStrategy := make(map[Action]float64)
+	for action, regret := range info.CumulativeRegret {
+		if regret > 0 {
+			stateStrategy[action] = regret
+		} else {
+			stateStrategy[action] = 0
+		}
+		norm += stateStrategy[action]
+	}
+
+	for action := range info.CumulativeStrategySum {
+		if norm > 0 {
+			stateStrategy[action] = stateStrategy[action] / norm
+		} else {
+			stateStrategy[action] = 1.0 / float64(len(info.CumulativeRegret))
+		}
+	}
+	return stateStrategy
+}
+
+func sampleAction(stateStrat map[Action]float64) Action {
+	num := rand.Float64()
+	sum := 0.0
+	for action, likelihood := range stateStrat {
+		sum += likelihood
+		if sum > num {
+			return action
+		}
+	}
+	panic("Unable to sample action for strategy. Maybe strategy is not a valid distribution?")
 }
 
 func (info *InfoSet) updateStrategy() {
@@ -30,13 +68,13 @@ func (info *InfoSet) updateStrategy() {
 
 func makeInfoSet(ValidActions []Action) InfoSet {
 	info := InfoSet{
-		CumulativeStrategy: make(map[Action]float64),
-		CumulativeRegret:   make(map[Action]float64),
-		CurrentStrategy:    make(map[Action]float64),
+		CumulativeStrategySum: make(map[Action]float64),
+		CumulativeRegret:      make(map[Action]float64),
+		CurrentStrategy:       make(map[Action]float64),
 	}
 
 	for index := range ValidActions {
-		info.CumulativeStrategy[ValidActions[index]] = 0.0
+		info.CumulativeStrategySum[ValidActions[index]] = 0.0
 		info.CumulativeRegret[ValidActions[index]] = 0.0
 		info.CurrentStrategy[ValidActions[index]] = 1.0 / float64(len(ValidActions))
 	}
@@ -111,7 +149,7 @@ func (strat *Strategy) CFR(playerID int, state State, agentPathProbs []float64) 
 
 		for _, action := range validActions {
 			info.CumulativeRegret[action] += nonPlayerPathProb * (actionUtility[action] - utility)
-			info.CumulativeStrategy[action] += agentPathProbs[playerID] * info.CurrentStrategy[action]
+			info.CumulativeStrategySum[action] += agentPathProbs[playerID] * info.CurrentStrategy[action]
 		}
 
 		info.updateStrategy()
