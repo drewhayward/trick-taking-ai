@@ -95,7 +95,7 @@ func NewStrategy() Strategy {
 type State interface {
 	ValidActions() []Action
 	// Should return a pointer to the same state object to minimize copying
-	TakeAction(Action) State
+	TakeAction(Action, bool) State
 	// Pass by value so the state is duplicated
 	TakeActionCopy(Action) State
 	IsTerminal() bool
@@ -105,6 +105,9 @@ type State interface {
 }
 
 func (strat *Strategy) CFR(playerID int, state State, agentPathProbs []float64) float64 {
+	return strat.cfr(playerID, state, agentPathProbs, 0)
+}
+func (strat *Strategy) cfr(playerID int, state State, agentPathProbs []float64, depth int) float64 {
 	currentAgent := state.GetCurrentAgent()
 
 	if state.IsTerminal() {
@@ -115,7 +118,7 @@ func (strat *Strategy) CFR(playerID int, state State, agentPathProbs []float64) 
 
 	if len(validActions) == 1 {
 		// Pass the state by reference since we don't need to run other actions
-		return strat.CFR(playerID, state.TakeAction(validActions[0]), agentPathProbs)
+		return strat.cfr(playerID, state.TakeAction(validActions[0], false), agentPathProbs, depth+1)
 	}
 
 	InfoSetKey := state.GetInfoSetKey()
@@ -134,7 +137,7 @@ func (strat *Strategy) CFR(playerID int, state State, agentPathProbs []float64) 
 		copy(newPathProbs, agentPathProbs)
 		newPathProbs[currentAgent] = newPathProbs[currentAgent] * actionProb
 
-		actionUtility[action] = strat.CFR(playerID, state.TakeActionCopy(action), newPathProbs)
+		actionUtility[action] = strat.cfr(playerID, state.TakeActionCopy(action), newPathProbs, depth+1)
 		utility += (actionProb * actionUtility[action])
 	}
 

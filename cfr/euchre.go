@@ -10,6 +10,24 @@ import (
 // Value ...
 type Value uint8
 
+func (v Value) toString() string {
+	switch v {
+	case ACE:
+		return "Ace"
+	case KING:
+		return "King"
+	case QUEEN:
+		return "Queen"
+	case JACK:
+		return "Jack"
+	case TEN:
+		return "Ten"
+	case NINE:
+		return "Nine"
+	}
+	return "NULL_VALUE"
+}
+
 // Card Enumerations
 const (
 	ACE   = Value(6)
@@ -28,6 +46,20 @@ const (
 
 // Suit ...
 type Suit uint8
+
+func (s Suit) toString() string {
+	switch s {
+	case SPADES:
+		return "Spades"
+	case CLUBS:
+		return "Clubs"
+	case HEARTS:
+		return "Hearts"
+	case DIAMONDS:
+		return "Diamonds"
+	}
+	return "NULL_SUIT"
+}
 
 func (s Suit) complement() Suit {
 	switch s {
@@ -75,9 +107,9 @@ func (s Suit) redBlackCycle() Suit {
 func (s Suit) normalizeSuit(suit Suit) Suit {
 	switch suit {
 	case DIAMONDS:
-		return s.redBlackCycle()
+		return s.swapCycle().redBlackCycle()
 	case HEARTS:
-		return s.redBlackCycle().swapCycle()
+		return s.redBlackCycle()
 	case CLUBS:
 		return s.swapCycle()
 	case SPADES:
@@ -132,7 +164,7 @@ func getRankings(trumpSuit Suit, leadSuit Suit) []Card {
 
 	// Add lead suit
 	if leadSuit != trumpSuit {
-		for v := 6; v > 0; v-- {
+		for v := 1; v <= 6; v++ {
 			card := makeCard(leadSuit, Value(v))
 			if card != leftBower {
 				ranks = append(ranks, card)
@@ -153,6 +185,10 @@ func getRankings(trumpSuit Suit, leadSuit Suit) []Card {
 	ranks = append(ranks, rightBower)
 
 	return ranks
+}
+
+func (c Card) toString() string {
+	return fmt.Sprintf("%s of %s", c.getValue().toString(), c.getSuit().toString())
 }
 
 func getRank(c Card, ranks []Card) int {
@@ -405,10 +441,36 @@ func (state *EuchreState) ValidActions() []Action {
 }
 
 // TakeAction ...
-func (state *EuchreState) TakeAction(action Action) State {
+func (state *EuchreState) TakeAction(action Action, narrate bool) State {
+
+	if narrate {
+		fmt.Println("-----")
+		fmt.Printf("Current Score %d-%d\n", state.teamTricks[0], state.teamTricks[1])
+		fmt.Printf("Calling Team: team %d\n", state.callingTeam)
+		fmt.Printf("Trump Suit %s\n", state.trumpSuit.toString())
+		fmt.Printf("Lead Suit %s\n", state.leadSuit.toString())
+		fmt.Printf("Table state:\n")
+		for i, card := range state.table {
+			if i == 0 {
+				fmt.Printf("\tPlayer %d lead the %s\n", state.lead, card.toString())
+			} else {
+				fmt.Printf("\tPlayer %d played the %s\n", (state.lead+i)%4, card.toString())
+			}
+		}
+
+		fmt.Printf("Player %d's hand\n", state.currentAgent)
+		for _, card := range state.playerHands[state.currentAgent] {
+			fmt.Printf("\t%s\n", card.toString())
+		}
+	}
+
 	// Playing a card
 	card := Card(action)
 	state.history = append(state.history, card)
+
+	if narrate {
+		fmt.Printf("Player %d plays the %s.\n", state.currentAgent, card.toString())
+	}
 
 	state.playerHands[state.currentAgent] = RemoveValue(state.playerHands[state.currentAgent], card)
 	state.table = append(state.table, card)
@@ -422,7 +484,15 @@ func (state *EuchreState) TakeAction(action Action) State {
 		}
 	} else if card.effectiveSuit(state.trumpSuit) != state.leadSuit {
 		// Track shortsuitedness
-		state.shortSuited[state.currentAgent] = append(state.shortSuited[state.currentAgent], state.leadSuit)
+		present := false
+		for _, suit := range state.shortSuited[state.currentAgent] {
+			if state.leadSuit == suit {
+				present = true
+			}
+		}
+		if !present {
+			state.shortSuited[state.currentAgent] = append(state.shortSuited[state.currentAgent], state.leadSuit)
+		}
 	}
 
 	// Trick completion
@@ -440,6 +510,10 @@ func (state *EuchreState) TakeAction(action Action) State {
 			}
 		}
 		winningPlayer := (bestIdx + state.lead) % 4
+
+		if narrate {
+			fmt.Printf("Player %d wins the trick ", winningPlayer)
+		}
 
 		// Award player and reset table
 		state.teamTricks[winningPlayer%2]++
@@ -480,7 +554,7 @@ func (state *EuchreState) GetUtility(playerID int) float64 {
 // TakeActionCopy ...
 func (state EuchreState) TakeActionCopy(action Action) State {
 	clone := state.Clone()
-	return clone.TakeAction(action)
+	return clone.TakeAction(action, false)
 }
 
 // GetInfoSetKey ...

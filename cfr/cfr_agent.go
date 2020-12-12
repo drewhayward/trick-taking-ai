@@ -5,15 +5,27 @@ type CFRAgent struct {
 	Strat Strategy
 }
 
+func (agent *CFRAgent) clearStrategy() {
+	agent.Strat = NewStrategy()
+}
+
 // Act ...
-func (agent CFRAgent) Act(state State) Action {
+func (agent *CFRAgent) Act(state State) Action {
 	var euchreState *EuchreState = state.(*EuchreState)
+
+	if len(euchreState.ValidActions()) == 1 {
+		return euchreState.ValidActions()[0]
+	}
 	// Abstract state
 	oldTrump := euchreState.trumpSuit
 	euchreState.normalizeTrump(oldTrump)
+	if euchreState.trumpSuit != SPADES {
+		panic("Trump abstraction failed")
+	}
+	key := euchreState.GetInfoSetKey()
 
 	// Train CFR on only this information set
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		// Sample another state in the same info set
 		sampledState := euchreState.SampleInfoSet()
 
@@ -29,8 +41,9 @@ func (agent CFRAgent) Act(state State) Action {
 		}
 	}
 
-	key := euchreState.GetInfoSetKey()
-	newStrategy := agent.Strat.InfoSetMap[key].getStateStrategy()
+	infoSet := agent.Strat.InfoSetMap[key]
+	newStrategy := infoSet.getStateStrategy()
+
 	action := sampleAction(newStrategy)
 
 	// Need to unnormalize the action too
@@ -39,5 +52,8 @@ func (agent CFRAgent) Act(state State) Action {
 	action = Action(euchrePlay)
 
 	euchreState.unnormalizeTrump(oldTrump)
+
+	agent.clearStrategy()
+
 	return action
 }
