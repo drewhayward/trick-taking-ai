@@ -272,7 +272,7 @@ func (state *EuchreState) ValidActions() []Action {
 		playableActions = make([]Action, 0, len(hand))
 		var lastCard Card = 0
 		for _, card := range hand {
-			skipAction := (card == (lastCard + 1))
+			skipAction := (trumpRankTransform(card, state.trumpSuit) == (lastCard + 1))
 			if !skipAction {
 				playableActions = append(playableActions, Action(card))
 			}
@@ -288,8 +288,59 @@ func (state *EuchreState) ValidActions() []Action {
 	return playableActions
 }
 
+// Renumbers the cards in the trump and complement suit. This
+// 	makes it easier to abstract the play actions so equivalent value
+//	cards only form 1 action
+func trumpRankTransform(c Card, trumpSuit Suit) Card {
+	if c.effectiveSuit(trumpSuit) == trumpSuit {
+		switch c.getValue() {
+		case NINE:
+			return Card(int(trumpSuit) + 1)
+		case TEN:
+			return Card(int(trumpSuit) + 2)
+		case QUEEN:
+			return Card(int(trumpSuit) + 3)
+		case KING:
+			return Card(int(trumpSuit) + 4)
+		case ACE:
+			return Card(int(trumpSuit) + 5)
+		case JACK:
+			if c.getSuit() == trumpSuit {
+				return Card(int(trumpSuit) + 7)
+			}
+			return Card(int(trumpSuit) + 6)
+		}
+	} else if c.getSuit() == trumpSuit.complement() {
+		compSuit := trumpSuit.complement()
+		switch c.getValue() {
+		case NINE:
+			return Card(int(compSuit) + 1)
+		case TEN:
+			return Card(int(compSuit) + 2)
+		case QUEEN:
+			return Card(int(compSuit) + 3)
+		case KING:
+			return Card(int(compSuit) + 4)
+		case ACE:
+			return Card(int(compSuit) + 5)
+		}
+	}
+
+	return c
+}
+
 // TakeAction ...
 func (state *EuchreState) TakeAction(action Action, narrate bool) State {
+	// Check if action is valid
+	valid := false
+	for _, valid_action := range state.ValidActions() {
+		if valid_action == action {
+			valid = true
+		}
+	}
+	if !valid {
+		panic("Invalid action given")
+	}
 
 	if narrate {
 		fmt.Println("-----")
