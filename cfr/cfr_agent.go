@@ -1,5 +1,7 @@
 package cfr
 
+import "fmt"
+
 // CFRAgent ...
 type CFRAgent struct {
 	Strat Strategy
@@ -18,17 +20,24 @@ func (agent *CFRAgent) Act(state State) Action {
 	}
 	// Abstract state
 	oldTrump := euchreState.trumpSuit
+	euchreState.CheckCards()
 	euchreState.normalizeTrump(oldTrump)
+	euchreState.CheckCards()
 	if euchreState.trumpSuit != SPADES {
 		panic("Trump abstraction failed")
 	}
 	key := euchreState.GetInfoSetKey()
 
 	// Train CFR on only this information set
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 1; i++ {
 		// Sample another state in the same info set
-		sampledState := euchreState.SampleInfoSet()
-
+		sampledState, err := euchreState.SampleInfoSet()
+		attempts := 0
+		for err != nil {
+			sampledState, err = euchreState.SampleInfoSet()
+			fmt.Printf("Sample Attempt %d\n", attempts)
+			attempts++
+		}
 		// Train on it
 		// TODO: Maybe we can ignore training the positions of the other players?
 		// 	This would save memory and time.
@@ -51,7 +60,9 @@ func (agent *CFRAgent) Act(state State) Action {
 	euchrePlay.normalizeSuit(oldTrump)
 	action = Action(euchrePlay)
 
+	euchreState.CheckCards()
 	euchreState.unnormalizeTrump(oldTrump)
+	euchreState.CheckCards()
 
 	agent.clearStrategy()
 

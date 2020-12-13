@@ -1,204 +1,12 @@
 package cfr
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"sort"
 	"time"
 )
-
-// Value ...
-type Value uint8
-
-func (v Value) toString() string {
-	switch v {
-	case ACE:
-		return "Ace"
-	case KING:
-		return "King"
-	case QUEEN:
-		return "Queen"
-	case JACK:
-		return "Jack"
-	case TEN:
-		return "Ten"
-	case NINE:
-		return "Nine"
-	}
-	return "NULL_VALUE"
-}
-
-// Card Enumerations
-const (
-	ACE   = Value(6)
-	KING  = Value(5)
-	QUEEN = Value(4)
-	JACK  = Value(3)
-	TEN   = Value(2)
-	NINE  = Value(1)
-)
-const (
-	DIAMONDS = Suit(10)
-	HEARTS   = Suit(20)
-	SPADES   = Suit(30)
-	CLUBS    = Suit(40)
-)
-
-// Suit ...
-type Suit uint8
-
-func (s Suit) toString() string {
-	switch s {
-	case SPADES:
-		return "Spades"
-	case CLUBS:
-		return "Clubs"
-	case HEARTS:
-		return "Hearts"
-	case DIAMONDS:
-		return "Diamonds"
-	}
-	return "NULL_SUIT"
-}
-
-func (s Suit) complement() Suit {
-	switch s {
-	case SPADES:
-		return CLUBS
-	case CLUBS:
-		return SPADES
-	case HEARTS:
-		return DIAMONDS
-	case DIAMONDS:
-		return HEARTS
-	default:
-		panic("Suit is not valid")
-	}
-}
-
-func (s Suit) swapCycle() Suit {
-	switch s {
-	case DIAMONDS:
-		return s + 10
-	case HEARTS:
-		return s - 10
-	case SPADES:
-		return s + 10
-	case CLUBS:
-		return s - 10
-	}
-	panic("Attempted to cycle null suit")
-}
-
-func (s Suit) redBlackCycle() Suit {
-	switch s {
-	case DIAMONDS:
-		return s + 30
-	case HEARTS:
-		return s + 10
-	case SPADES:
-		return s - 10
-	case CLUBS:
-		return s - 30
-	}
-	panic("Attempted to cycle null suit")
-}
-
-func (s Suit) normalizeSuit(suit Suit) Suit {
-	switch suit {
-	case DIAMONDS:
-		return s.swapCycle().redBlackCycle()
-	case HEARTS:
-		return s.redBlackCycle()
-	case CLUBS:
-		return s.swapCycle()
-	case SPADES:
-		return s
-	}
-	panic("Attempting to set a null suit")
-}
-
-// Card ...
-type Card uint8
-
-func makeCard(suit Suit, value Value) Card {
-	return Card(int(suit) + int(value))
-}
-
-func (c *Card) effectiveSuit(trumpSuit Suit) Suit {
-	if (c.getValue() == JACK) && (trumpSuit == c.getSuit().complement()) {
-		return trumpSuit
-	} else {
-		return c.getSuit()
-	}
-}
-
-func (c *Card) getSuit() Suit {
-	return Suit((int(*c) / 10) * 10)
-}
-
-func (c *Card) getValue() Value {
-	return Value(int(*c) % 10)
-}
-
-func (c *Card) normalizeSuit(suit Suit) {
-	*c = Card(int(c.getSuit().normalizeSuit(suit)) + int(c.getValue()))
-}
-
-func getRankings(trumpSuit Suit, leadSuit Suit) []Card {
-	rightBower := makeCard(trumpSuit, JACK)
-	leftBower := makeCard(trumpSuit.complement(), JACK)
-
-	ranks := make([]Card, 0, 24)
-	// Add off suits
-	for s := 10; s <= 40; s += 10 {
-		if (Suit(s) != trumpSuit) && (Suit(s) != leadSuit) {
-			for v := 6; v > 0; v-- {
-				card := makeCard(Suit(s), Value(v))
-				if card != leftBower {
-					ranks = append(ranks, card)
-				}
-			}
-		}
-	}
-
-	// Add lead suit
-	if leadSuit != trumpSuit {
-		for v := 1; v <= 6; v++ {
-			card := makeCard(leadSuit, Value(v))
-			if card != leftBower {
-				ranks = append(ranks, card)
-			}
-		}
-	}
-
-	// Add trump
-	for v := 6; v > 0; v-- {
-		card := makeCard(trumpSuit, Value(v))
-		if card != rightBower {
-			ranks = append(ranks, card)
-		}
-	}
-
-	// Bowers on top
-	ranks = append(ranks, leftBower)
-	ranks = append(ranks, rightBower)
-
-	return ranks
-}
-
-func (c Card) toString() string {
-	return fmt.Sprintf("%s of %s", c.getValue().toString(), c.getSuit().toString())
-}
-
-func getRank(c Card, ranks []Card) int {
-	for idx, card := range ranks {
-		if card == c {
-			return idx
-		}
-	}
-	panic("Card not in rankings")
-}
 
 // EuchreAction ...
 // Actions defined as the sum of the the suit and Value for
@@ -275,7 +83,7 @@ func NewEuchreState() EuchreState {
 			deck = append(deck, Card(suit+value))
 		}
 	}
-	rand.Shuffle(len(deck), func(i, j int) { deck[i], deck[j] = deck[j], deck[i] })
+	deck = shuffle(deck)
 
 	leadPlayer := rand.Intn(4)
 	state := EuchreState{
@@ -306,42 +114,76 @@ func NewEuchreState() EuchreState {
 	return state
 }
 
-func (state EuchreState) SampleInfoSet() EuchreState {
+func (state EuchreState) SampleInfoSet() (EuchreState, error) {
 	key := state.GetInfoSetKey()
 	newState := state.Clone()
+	newState.CheckCards()
 
 	// Collect unknown cards
 	intermediateDeck := make([]Card, 0)
-	for i, hand := range newState.playerHands {
+	for i, hand := range state.playerHands {
 		if i != newState.currentAgent {
 			intermediateDeck = append(intermediateDeck, hand...)
+			newState.playerHands[i] = make([]Card, 0, len(hand))
 		}
 	}
 	intermediateDeck = append(intermediateDeck, newState.kitty[1:]...)
 
-	rand.Shuffle(len(intermediateDeck), func(i, j int) { intermediateDeck[i], intermediateDeck[j] = intermediateDeck[j], intermediateDeck[i] })
-	// Redeal respecting shortsuitedness
-	// Need to deal most-restrictive hands first
-	for i := 3; i >= 0; i-- {
-		for handIdx, suits := range state.shortSuited {
-			if len(suits) == i && handIdx != state.currentAgent {
-				// Advance through the shuffled cards until a valid card is found
-				currentPos := 0
-				for j := 0; currentPos < len(newState.playerHands[handIdx]); j++ {
-					deckCard := intermediateDeck[j]
-					if deckCard != 0 && !inSlice(suits, deckCard.effectiveSuit(newState.trumpSuit)) {
-						newState.playerHands[handIdx][currentPos] = deckCard
-						intermediateDeck[j] = 0
-						currentPos++
-					}
-				}
-				// Keep the hands sorted
-				sort.Slice(newState.playerHands[handIdx], func(j, k int) bool {
-					return newState.playerHands[handIdx][j] < newState.playerHands[handIdx][k]
-				})
+	intermediateDeck = shuffle(intermediateDeck)
 
-				// Need to reshuffle to unbias the next hands deal
-				rand.Shuffle(len(intermediateDeck), func(i, j int) { intermediateDeck[i], intermediateDeck[j] = intermediateDeck[j], intermediateDeck[i] })
+	// Need to deal cards that can only fit in one hand to that person
+	// Count number of compatible cards per hand
+	type pair struct {
+		count int
+		index int
+	}
+	counts := []pair{{0, 0}, {0, 1}, {0, 2}, {0, 3}}
+	for handIdx := 0; handIdx < 4; handIdx++ {
+		for _, card := range intermediateDeck {
+			if !inSlice(newState.shortSuited[handIdx], card.effectiveSuit(newState.trumpSuit)) {
+				counts[handIdx].count++
+			}
+		}
+	}
+	sort.Slice(counts, func(j, k int) bool {
+		return counts[j].count < counts[k].count
+	})
+	// Deal from most constrained to least
+	for _, countPair := range counts {
+		handIdx := countPair.index
+		suits := newState.shortSuited[handIdx]
+		if handIdx == newState.currentAgent {
+			continue
+		}
+		// Advance through the shuffled cards until a valid card is found
+		for j := 0; len(newState.playerHands[handIdx]) < cap(newState.playerHands[handIdx]); j++ {
+			if j >= len(intermediateDeck) {
+				return EuchreState{}, errors.New("Invalid shuffle")
+			}
+			deckCard := intermediateDeck[j]
+			if deckCard != 0 && !inSlice(suits, deckCard.effectiveSuit(newState.trumpSuit)) {
+				newState.playerHands[handIdx] = append(newState.playerHands[handIdx], deckCard)
+				intermediateDeck[j] = 0
+			}
+		}
+		// Keep the hands sorted
+		sort.Slice(newState.playerHands[handIdx], func(j, k int) bool {
+			return newState.playerHands[handIdx][j] < newState.playerHands[handIdx][k]
+		})
+
+		// Need to reshuffle to unbias the next hands deal
+		intermediateDeck = shuffle(intermediateDeck)
+	}
+
+	newState.kitty = make([]Card, len(state.kitty))
+	newState.kitty[0] = state.kitty[0]
+	// Put remaining in kitty
+	for i := 1; i < 4; i++ {
+		for j := 0; j < len(intermediateDeck); j++ {
+			if intermediateDeck[j] != 0 {
+				newState.kitty[i] = intermediateDeck[j]
+				intermediateDeck[j] = 0
+				break
 			}
 		}
 	}
@@ -350,7 +192,8 @@ func (state EuchreState) SampleInfoSet() EuchreState {
 		panic("Incorrect sampling, key should remain the same")
 	}
 
-	return newState
+	newState.CheckCards()
+	return newState, nil
 }
 
 func inSlice(slice []Suit, suit Suit) bool {
@@ -363,8 +206,8 @@ func inSlice(slice []Suit, suit Suit) bool {
 }
 
 // Clone ...
-func (state *EuchreState) Clone() EuchreState {
-	newState := *state
+func (state EuchreState) Clone() EuchreState {
+	newState := state
 
 	// Copy hands
 	for handIdx, hand := range state.playerHands {
@@ -383,6 +226,11 @@ func (state *EuchreState) Clone() EuchreState {
 		for sIdx, suit := range suits {
 			newState.shortSuited[handIdx][sIdx] = suit
 		}
+	}
+
+	newState.kitty = make([]Card, len(state.kitty))
+	for cIdx, card := range state.kitty {
+		newState.kitty[cIdx] = card
 	}
 
 	return newState
@@ -579,6 +427,61 @@ func (state *EuchreState) IsTerminal() bool {
 	return (state.teamTricks[state.callingTeam] == 5) || (state.teamTricks[nonCallingTeam] == 3) || (state.teamTricks[0]+state.teamTricks[1] == 5)
 }
 
+// Ensures that no cards have been duplicated or lost
+func (state EuchreState) CheckCards() {
+	for value := 1; value < 7; value++ {
+		for suit := 10; suit <= 40; suit += 10 {
+			card := Card(suit + value)
+			pass := state.checkCard(card)
+			if !pass {
+				panic(fmt.Sprintf("Lost %s somewhere", card.toString()))
+			}
+		}
+	}
+
+	for handIdx, hand := range state.playerHands {
+		for _, card := range hand {
+			if inSlice(state.shortSuited[handIdx], card.effectiveSuit(state.trumpSuit)) {
+				panic(fmt.Sprintf("Shortsuited tracking incorrect"))
+			}
+		}
+	}
+}
+
+// Look for a single card and make sure it appears once
+func (state EuchreState) checkCard(c Card) bool {
+	found := false
+
+	for _, hand := range state.playerHands {
+		for _, card := range hand {
+			if card == c {
+				if found {
+					return false
+				}
+				found = true
+			}
+		}
+	}
+	for _, card := range state.kitty {
+		if card == c {
+			if found {
+				return false
+			}
+			found = true
+		}
+	}
+	for _, card := range state.history {
+		if card == c {
+			if found {
+				return false
+			}
+			found = true
+		}
+	}
+
+	return found
+}
+
 func (state *EuchreState) normalizeTrump(suit Suit) {
 
 	// Hands
@@ -596,6 +499,18 @@ func (state *EuchreState) normalizeTrump(suit Suit) {
 	// Table
 	for i := range state.table {
 		state.table[i].normalizeSuit(suit)
+	}
+
+	// Kitty
+	for i := range state.kitty {
+		state.kitty[i].normalizeSuit(suit)
+	}
+
+	// Shortsuitedness
+	for i := range state.shortSuited {
+		for j := range state.shortSuited[i] {
+			state.shortSuited[i][j] = state.shortSuited[i][j].normalizeSuit(suit)
+		}
 	}
 
 	// Trump/lead
@@ -625,4 +540,14 @@ func RemoveValue(s []Card, value Card) []Card {
 	}
 
 	return append(s[:index], s[index+1:]...)
+}
+
+func shuffle(vals []Card) []Card {
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+	ret := make([]Card, len(vals))
+	perm := r.Perm(len(vals))
+	for i, randIndex := range perm {
+		ret[i] = vals[randIndex]
+	}
+	return ret
 }
