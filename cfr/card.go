@@ -182,7 +182,7 @@ func getRankings(trumpSuit Suit, leadSuit Suit) []Card {
 	return ranks
 }
 
-func (c Card) toString() string {
+func (c Card) ToString() string {
 	return fmt.Sprintf("%s of %s", c.getValue().toString(), c.getSuit().toString())
 }
 

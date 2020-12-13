@@ -4,11 +4,13 @@ import "fmt"
 
 // CFRAgent ...
 type CFRAgent struct {
-	Strat Strategy
+	Strat         *Strategy
+	NumIterations int
 }
 
-func (agent *CFRAgent) clearStrategy() {
-	agent.Strat = NewStrategy()
+func (agent *CFRAgent) ClearStrategy() {
+	strat := NewStrategy()
+	agent.Strat = &strat
 }
 
 // Act ...
@@ -20,16 +22,14 @@ func (agent *CFRAgent) Act(state State) Action {
 	}
 	// Abstract state
 	oldTrump := euchreState.trumpSuit
-	euchreState.CheckCards()
 	euchreState.normalizeTrump(oldTrump)
-	euchreState.CheckCards()
 	if euchreState.trumpSuit != SPADES {
 		panic("Trump abstraction failed")
 	}
 	key := euchreState.GetInfoSetKey()
 
 	// Train CFR on only this information set
-	for i := 0; i < 1; i++ {
+	for i := 0; i < agent.NumIterations; i++ {
 		// Sample another state in the same info set
 		sampledState, err := euchreState.SampleInfoSet()
 		attempts := 0
@@ -60,11 +60,9 @@ func (agent *CFRAgent) Act(state State) Action {
 	euchrePlay.normalizeSuit(oldTrump)
 	action = Action(euchrePlay)
 
-	euchreState.CheckCards()
 	euchreState.unnormalizeTrump(oldTrump)
-	euchreState.CheckCards()
 
-	agent.clearStrategy()
+	agent.ClearStrategy()
 
 	return action
 }

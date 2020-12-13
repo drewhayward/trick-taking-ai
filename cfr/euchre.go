@@ -117,7 +117,6 @@ func NewEuchreState() EuchreState {
 func (state EuchreState) SampleInfoSet() (EuchreState, error) {
 	key := state.GetInfoSetKey()
 	newState := state.Clone()
-	newState.CheckCards()
 
 	// Collect unknown cards
 	intermediateDeck := make([]Card, 0)
@@ -192,7 +191,6 @@ func (state EuchreState) SampleInfoSet() (EuchreState, error) {
 		panic("Incorrect sampling, key should remain the same")
 	}
 
-	newState.CheckCards()
 	return newState, nil
 }
 
@@ -247,7 +245,7 @@ func (state *EuchreState) ValidActions() []Action {
 		playableActions = make([]Action, 0, len(hand))
 		var lastCard Card = 0
 		for _, card := range hand {
-			skipAction := (lastCard != 0) && (card == (lastCard + 1))
+			skipAction := (lastCard != 0) && (TrumpRankTransform(card, state.trumpSuit) == (lastCard + 1))
 			if !skipAction && (card.effectiveSuit(state.trumpSuit) == state.leadSuit) {
 				playableActions = append(playableActions, Action(card))
 			}
@@ -272,7 +270,7 @@ func (state *EuchreState) ValidActions() []Action {
 		playableActions = make([]Action, 0, len(hand))
 		var lastCard Card = 0
 		for _, card := range hand {
-			skipAction := (trumpRankTransform(card, state.trumpSuit) == (lastCard + 1))
+			skipAction := (TrumpRankTransform(card, state.trumpSuit) == (lastCard + 1))
 			if !skipAction {
 				playableActions = append(playableActions, Action(card))
 			}
@@ -291,7 +289,7 @@ func (state *EuchreState) ValidActions() []Action {
 // Renumbers the cards in the trump and complement suit. This
 // 	makes it easier to abstract the play actions so equivalent value
 //	cards only form 1 action
-func trumpRankTransform(c Card, trumpSuit Suit) Card {
+func TrumpRankTransform(c Card, trumpSuit Suit) Card {
 	if c.effectiveSuit(trumpSuit) == trumpSuit {
 		switch c.getValue() {
 		case NINE:
@@ -331,16 +329,6 @@ func trumpRankTransform(c Card, trumpSuit Suit) Card {
 
 // TakeAction ...
 func (state *EuchreState) TakeAction(action Action, narrate bool) State {
-	// Check if action is valid
-	valid := false
-	for _, valid_action := range state.ValidActions() {
-		if valid_action == action {
-			valid = true
-		}
-	}
-	if !valid {
-		panic("Invalid action given")
-	}
 
 	if narrate {
 		fmt.Println("-----")
@@ -351,15 +339,15 @@ func (state *EuchreState) TakeAction(action Action, narrate bool) State {
 		fmt.Printf("Table state:\n")
 		for i, card := range state.table {
 			if i == 0 {
-				fmt.Printf("\tPlayer %d lead the %s\n", state.lead, card.toString())
+				fmt.Printf("\tPlayer %d lead the %s\n", state.lead, card.ToString())
 			} else {
-				fmt.Printf("\tPlayer %d played the %s\n", (state.lead+i)%4, card.toString())
+				fmt.Printf("\tPlayer %d played the %s\n", (state.lead+i)%4, card.ToString())
 			}
 		}
 
 		fmt.Printf("Player %d's hand\n", state.currentAgent)
 		for _, card := range state.playerHands[state.currentAgent] {
-			fmt.Printf("\t%s\n", card.toString())
+			fmt.Printf("\t%s\n", card.ToString())
 		}
 	}
 
@@ -368,7 +356,7 @@ func (state *EuchreState) TakeAction(action Action, narrate bool) State {
 	state.history = append(state.history, card)
 
 	if narrate {
-		fmt.Printf("Player %d plays the %s.\n", state.currentAgent, card.toString())
+		fmt.Printf("Player %d plays the %s.\n", state.currentAgent, card.ToString())
 	}
 
 	state.playerHands[state.currentAgent] = RemoveValue(state.playerHands[state.currentAgent], card)
@@ -480,16 +468,29 @@ func (state *EuchreState) IsTerminal() bool {
 
 // Ensures that no cards have been duplicated or lost
 func (state EuchreState) CheckCards() {
+	// Check if cards are all present
 	for value := 1; value < 7; value++ {
 		for suit := 10; suit <= 40; suit += 10 {
 			card := Card(suit + value)
 			pass := state.checkCard(card)
 			if !pass {
-				panic(fmt.Sprintf("Lost %s somewhere", card.toString()))
+				panic(fmt.Sprintf("Lost %s somewhere", card.ToString()))
 			}
 		}
 	}
 
+	// Check to make sure the hands are sorted
+	for _, hand := range state.playerHands {
+		last := Card(0)
+		for _, card := range hand {
+			if card <= last {
+				panic("Hands are not sorted")
+			}
+			last = card
+		}
+	}
+
+	// Check validity of the shortsuit array
 	for handIdx, hand := range state.playerHands {
 		for _, card := range hand {
 			if inSlice(state.shortSuited[handIdx], card.effectiveSuit(state.trumpSuit)) {
@@ -540,6 +541,10 @@ func (state *EuchreState) normalizeTrump(suit Suit) {
 		for j := range state.playerHands[i] {
 			state.playerHands[i][j].normalizeSuit(suit)
 		}
+
+		sort.Slice(state.playerHands[i], func(j, k int) bool {
+			return state.playerHands[i][j] < state.playerHands[i][k]
+		})
 	}
 
 	// History
