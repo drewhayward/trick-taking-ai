@@ -2,29 +2,33 @@ package main
 
 import (
 	"encoding/gob"
+	"flag"
 	"fmt"
+	"log"
 	"os"
+	"runtime"
+	"runtime/pprof"
 	"time"
 
 	"github.com/drewhayward/trick-taking-ai/cfr"
 )
 
 func main() {
-	// var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
-	// var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
+	var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
+	var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
 
-	// flag.Parse()
-	// if *cpuprofile != "" {
-	// 	f, err := os.Create(*cpuprofile)
-	// 	if err != nil {
-	// 		log.Fatal("could not create CPU profile: ", err)
-	// 	}
-	// 	defer f.Close() // error handling omitted for example
-	// 	if err := pprof.StartCPUProfile(f); err != nil {
-	// 		log.Fatal("could not start CPU profile: ", err)
-	// 	}
-	// 	defer pprof.StopCPUProfile()
-	// }
+	flag.Parse()
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal("could not create CPU profile: ", err)
+		}
+		defer f.Close() // error handling omitted for example
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
 
 	/* START CODE */
 
@@ -48,6 +52,9 @@ func main() {
 	maxIter := 10
 	for iter := 0; iter < maxIter; iter++ {
 		state := cfr.NewEuchreState()
+		//sampledState, _ := state.SampleInfoSet()
+		trump := state.TrumpSuit
+		state.Normalize(trump)
 		for playerId := 0; playerId < 4; playerId++ {
 			probs := make([]float64, 4)
 			for p := 0; p < 4; p++ {
@@ -55,6 +62,7 @@ func main() {
 			}
 
 			util += strat.CFR(playerId, &state, probs)
+			fmt.Printf("There are %d info sets in the map.\n", len(strat.InfoSetMap))
 		}
 	}
 	end := time.Now().UnixNano()
@@ -76,15 +84,15 @@ func main() {
 
 	/* END CODE */
 
-	// if *memprofile != "" {
-	// 	f, err := os.Create(*memprofile)
-	// 	if err != nil {
-	// 		log.Fatal("could not create memory profile: ", err)
-	// 	}
-	// 	defer f.Close() // error handling omitted for example
-	// 	runtime.GC()    // get up-to-date statistics
-	// 	if err := pprof.WriteHeapProfile(f); err != nil {
-	// 		log.Fatal("could not write memory profile: ", err)
-	// 	}
-	// }
+	if *memprofile != "" {
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			log.Fatal("could not create memory profile: ", err)
+		}
+		defer f.Close() // error handling omitted for example
+		runtime.GC()    // get up-to-date statistics
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			log.Fatal("could not write memory profile: ", err)
+		}
+	}
 }

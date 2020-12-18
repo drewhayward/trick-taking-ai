@@ -3,6 +3,7 @@ package cfr
 // Agent ...
 type Agent interface {
 	Act(State) Action
+	EndGame()
 }
 
 // Game ...
@@ -22,6 +23,10 @@ func (game *Game) Play() []float64 {
 		// Take a move according to the current agent's policy
 		game.GameState.TakeAction(agentAction, false)
 		turnsTaken++
+	}
+
+	for _, agent := range game.Agents {
+		agent.EndGame()
 	}
 
 	// Get resulting utility

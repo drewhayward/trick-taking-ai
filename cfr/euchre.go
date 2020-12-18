@@ -68,7 +68,7 @@ type EuchreState struct {
 	teamTricks  [2]int
 
 	leadSuit     Suit
-	trumpSuit    Suit
+	TrumpSuit    Suit
 	lead         int
 	callingTeam  int
 	currentAgent int
@@ -109,7 +109,7 @@ func NewEuchreState() EuchreState {
 		})
 	}
 	state.kitty = append(state.kitty, deck[20:]...)
-	state.trumpSuit = state.kitty[0].getSuit()
+	state.TrumpSuit = state.kitty[0].getSuit()
 
 	return state
 }
@@ -139,7 +139,7 @@ func (state EuchreState) SampleInfoSet() (EuchreState, error) {
 	counts := []pair{{0, 0}, {0, 1}, {0, 2}, {0, 3}}
 	for handIdx := 0; handIdx < 4; handIdx++ {
 		for _, card := range intermediateDeck {
-			if !inSlice(newState.shortSuited[handIdx], card.effectiveSuit(newState.trumpSuit)) {
+			if !inSlice(newState.shortSuited[handIdx], card.effectiveSuit(newState.TrumpSuit)) {
 				counts[handIdx].count++
 			}
 		}
@@ -160,7 +160,7 @@ func (state EuchreState) SampleInfoSet() (EuchreState, error) {
 				return EuchreState{}, errors.New("Invalid shuffle")
 			}
 			deckCard := intermediateDeck[j]
-			if deckCard != 0 && !inSlice(suits, deckCard.effectiveSuit(newState.trumpSuit)) {
+			if deckCard != 0 && !inSlice(suits, deckCard.effectiveSuit(newState.TrumpSuit)) {
 				newState.playerHands[handIdx] = append(newState.playerHands[handIdx], deckCard)
 				intermediateDeck[j] = 0
 			}
@@ -245,8 +245,8 @@ func (state *EuchreState) ValidActions() []Action {
 		playableActions = make([]Action, 0, len(hand))
 		var lastCard Card = 0
 		for _, card := range hand {
-			skipAction := (lastCard != 0) && (TrumpRankTransform(card, state.trumpSuit) == (lastCard + 1))
-			if !skipAction && (card.effectiveSuit(state.trumpSuit) == state.leadSuit) {
+			skipAction := (lastCard != 0) && (TrumpRankTransform(card, state.TrumpSuit) == (lastCard + 1))
+			if !skipAction && (card.effectiveSuit(state.TrumpSuit) == state.leadSuit) {
 				playableActions = append(playableActions, Action(card))
 			}
 
@@ -270,7 +270,7 @@ func (state *EuchreState) ValidActions() []Action {
 		playableActions = make([]Action, 0, len(hand))
 		var lastCard Card = 0
 		for _, card := range hand {
-			skipAction := (TrumpRankTransform(card, state.trumpSuit) == (lastCard + 1))
+			skipAction := (TrumpRankTransform(card, state.TrumpSuit) == (lastCard + 1))
 			if !skipAction {
 				playableActions = append(playableActions, Action(card))
 			}
@@ -334,7 +334,7 @@ func (state *EuchreState) TakeAction(action Action, narrate bool) State {
 		fmt.Println("-----")
 		fmt.Printf("Current Score %d-%d\n", state.teamTricks[0], state.teamTricks[1])
 		fmt.Printf("Calling Team: team %d\n", state.callingTeam)
-		fmt.Printf("Trump Suit %s\n", state.trumpSuit.toString())
+		fmt.Printf("Trump Suit %s\n", state.TrumpSuit.toString())
 		fmt.Printf("Lead Suit %s\n", state.leadSuit.toString())
 		fmt.Printf("Table state:\n")
 		for i, card := range state.table {
@@ -364,12 +364,12 @@ func (state *EuchreState) TakeAction(action Action, narrate bool) State {
 
 	// Handle bower lead
 	if state.leadSuit == 0 {
-		if card == makeCard(state.trumpSuit.complement(), JACK) {
-			state.leadSuit = state.trumpSuit
+		if card == makeCard(state.TrumpSuit.complement(), JACK) {
+			state.leadSuit = state.TrumpSuit
 		} else {
 			state.leadSuit = card.getSuit()
 		}
-	} else if card.effectiveSuit(state.trumpSuit) != state.leadSuit {
+	} else if card.effectiveSuit(state.TrumpSuit) != state.leadSuit {
 		// Track shortsuitedness
 		present := false
 		for _, suit := range state.shortSuited[state.currentAgent] {
@@ -384,7 +384,7 @@ func (state *EuchreState) TakeAction(action Action, narrate bool) State {
 
 	// Trick completion
 	if len(state.table) == 4 {
-		rankings := getRankings(state.trumpSuit, state.leadSuit)
+		rankings := getRankings(state.TrumpSuit, state.leadSuit)
 
 		// Get highest card
 		bestIdx := -1
@@ -448,13 +448,46 @@ func (state EuchreState) TakeActionCopy(action Action) State {
 func (state EuchreState) GetInfoSetKey() InfoSetKey {
 	cardStrings := ""
 
+	// Current Hand
 	for _, card := range state.playerHands[state.currentAgent] {
 		cardStrings += fmt.Sprintf("%d", card)
 	}
 	cardStrings += "_"
 
-	for _, card := range state.history {
+	// Seen cards
+	seenCards := make([]Card, len(state.history))
+	copy(seenCards, state.history)
+	sort.Slice(seenCards, func(j, k int) bool {
+		return seenCards[j] < seenCards[k]
+	})
+	for _, card := range seenCards {
 		cardStrings += fmt.Sprintf("%d", card)
+	}
+	cardStrings += "_"
+
+	// Table
+	for _, card := range state.table {
+		cardStrings += fmt.Sprintf("%d", card)
+	}
+	cardStrings += "_"
+
+	// Shortsuitedness
+	for i := 1; i < 4; i++ {
+		handIdx := (state.currentAgent + i) % 4
+		suits := []int{0, 0, 0, 0}
+		for _, suit := range state.shortSuited[handIdx] {
+			suitIdx := (suit / 10) - 1
+			suits[suitIdx] = 1
+		}
+		for _, suit := range suits {
+			cardStrings += fmt.Sprintf("%d", suit)
+		}
+	}
+	cardStrings += "_"
+
+	// Tricks
+	if cardStrings[len(cardStrings)-1] != '_' {
+		panic("Incorrect key")
 	}
 
 	return InfoSetKey(cardStrings)
@@ -493,7 +526,7 @@ func (state EuchreState) CheckCards() {
 	// Check validity of the shortsuit array
 	for handIdx, hand := range state.playerHands {
 		for _, card := range hand {
-			if inSlice(state.shortSuited[handIdx], card.effectiveSuit(state.trumpSuit)) {
+			if inSlice(state.shortSuited[handIdx], card.effectiveSuit(state.TrumpSuit)) {
 				panic(fmt.Sprintf("Shortsuited tracking incorrect"))
 			}
 		}
@@ -534,7 +567,7 @@ func (state EuchreState) checkCard(c Card) bool {
 	return found
 }
 
-func (state *EuchreState) normalizeTrump(suit Suit) {
+func (state *EuchreState) Normalize(suit Suit) {
 
 	// Hands
 	for i := range state.playerHands {
@@ -570,15 +603,15 @@ func (state *EuchreState) normalizeTrump(suit Suit) {
 	}
 
 	// Trump/lead
-	state.trumpSuit = state.trumpSuit.normalizeSuit(suit)
+	state.TrumpSuit = state.TrumpSuit.normalizeSuit(suit)
 	if state.leadSuit != 0 {
 		state.leadSuit = state.leadSuit.normalizeSuit(suit)
 	}
 }
 
-func (state *EuchreState) unnormalizeTrump(suit Suit) {
+func (state *EuchreState) Unnormalize(suit Suit) {
 	// This operation is it's own inverse
-	state.normalizeTrump(suit)
+	state.Normalize(suit)
 }
 
 // RemoveValue ...

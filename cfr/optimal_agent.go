@@ -8,6 +8,10 @@ import (
 type OptimalAgent struct {
 }
 
+func (agent OptimalAgent) EndGame() {
+
+}
+
 // Act calculates the best action for an optimal player who
 // can observe all cards/outcomes
 func (agent OptimalAgent) Act(state State) Action {

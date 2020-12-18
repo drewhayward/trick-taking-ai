@@ -22,27 +22,31 @@ func main() {
 	// 		game.Agents[i] = cfr.OptimalAgent{}
 	// 	}
 	// }
-	game.Agents[0] = cfr.RandomAgent{}
-	game.Agents[1] = &cfr.CFRAgent{Strat: strat}
-	game.Agents[2] = cfr.RandomAgent{}
-	game.Agents[3] = &cfr.CFRAgent{Strat: strat}
+	//iters := []int{1, 2, 5, 10}
+	iters := []int{10}
+	for _, numIter := range iters {
+		evenWins := 0
+		oddWins := 0
+		game.Agents[0] = cfr.RandomAgent{}
+		game.Agents[1] = &cfr.CFRAgent{Strat: &strat, NumIterations: numIter}
+		game.Agents[2] = cfr.RandomAgent{}
+		game.Agents[3] = &cfr.CFRAgent{Strat: &strat, NumIterations: numIter}
+		for i := 0; i < 100; i++ {
+			state = cfr.NewEuchreState()
+			game.GameState = &state
+			//strat := cfr.NewStrategy()
 
-	evenWins := 0
-	oddWins := 0
-	for i := 0; i < 100; i++ {
-		state = cfr.NewEuchreState()
-		game.GameState = &state
-		//strat := cfr.NewStrategy()
-
-		utilities := game.Play()
-		if utilities[0] > utilities[1] {
-			evenWins += 1
-		} else {
-			oddWins += 1
-
+			utilities := game.Play()
+			if utilities[0] > utilities[1] {
+				evenWins += 1
+			} else {
+				oddWins += 1
+			}
+			if i%10 == 0 {
+				fmt.Printf("Completed game %d\n", i)
+			}
 		}
-		fmt.Printf("Completed game %d\n", i)
+		fmt.Printf("Random Score: %d, CFR score %d, Num samples %d\n", evenWins, oddWins, numIter)
 	}
-	fmt.Printf("Even Score: %d, Odd score %d\n", evenWins, oddWins)
 
 }
