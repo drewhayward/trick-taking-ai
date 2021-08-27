@@ -328,8 +328,8 @@ func TrumpRankTransform(c Card, trumpSuit Suit) Card {
 }
 
 // TakeAction ...
-func (state *EuchreState) TakeAction(action Action, narrate bool) State {
-
+func (state *EuchreState) TakeAction(action Action) State {
+	narrate := false
 	if narrate {
 		fmt.Println("-----")
 		fmt.Printf("Current Score %d-%d\n", state.teamTricks[0], state.teamTricks[1])
@@ -441,7 +441,7 @@ func (state *EuchreState) GetUtility(playerID int) float64 {
 // TakeActionCopy ...
 func (state EuchreState) TakeActionCopy(action Action) State {
 	clone := state.Clone()
-	return clone.TakeAction(action, false)
+	return clone.TakeAction(action)
 }
 
 // GetInfoSetKey ...

@@ -118,17 +118,17 @@ func (strat *Strategy) cfr(playerID int, state State, agentPathProbs []float64, 
 
 	if len(validActions) == 1 {
 		// Pass the state by reference since we don't need to run other actions
-		return strat.cfr(playerID, state.TakeAction(validActions[0], false), agentPathProbs, depth+1)
+		return strat.cfr(playerID, state.TakeAction(validActions[0]), agentPathProbs, depth+1)
 	}
 
-	InfoSetKey := state.GetInfoSetKey()
-	info, exists := strat.InfoSetMap[InfoSetKey]
+	infoSetKey := state.GetInfoSetKey()
+	info, exists := strat.InfoSetMap[infoSetKey]
 	if !exists {
 		info = makeInfoSet(validActions)
-		strat.InfoSetMap[InfoSetKey] = info
+		strat.InfoSetMap[infoSetKey] = info
 	}
 
-	utility := float64(0.0)
+	utility := 0.0
 	actionUtility := make(map[Action]float64)
 	for _, action := range validActions {
 		actionProb := info.CurrentStrategy[action]

@@ -21,7 +21,7 @@ func (game *Game) Play() []float64 {
 
 		agentAction := game.Agents[currentAgent].Act(game.GameState)
 		// Take a move according to the current agent's policy
-		game.GameState.TakeAction(agentAction, false)
+		game.GameState.TakeAction(agentAction)
 		turnsTaken++
 	}
 
